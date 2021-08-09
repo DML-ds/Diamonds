@@ -1,0 +1,97 @@
+---
+title: "Diamonds data set...Tidymodels approach"
+output: html_notebook
+---
+
+#load the necessary libraries
+```{r}
+library(tidyverse)
+library(rsample)
+library(parsnip)
+library(recipes)
+```
+
+
+#split the data using rsample
+```{r}
+data_split <- initial_split(diamonds, strata = price)
+data_train <- training(data_split)
+data_test <- testing(data_split)
+```
+
+#data preprocessing
+```{r}
+data_rec <- data_train %>% 
+  recipe(price~., data_train) %>% 
+  step_dummy(all_nominal()) %>% #vectorizing all categorical variable
+  step_normalize(all_numeric(), - all_outcomes()) %>% 
+  prep()
+data_rec
+
+
+juiced <- juice(data_rec)
+```
+
+
+
+```{r}
+lm_model <- parsnip::linear_reg() %>% 
+  set_engine("lm") %>% 
+  set_mode("regression")
+lm_model
+```
+
+#fitting the model
+```{r}
+lm_fit <- fit(lm_model, price ~ ., juiced)
+lm_fit
+```
+#result overview of the whole model
+```{r}
+glance(lm_fit)
+```
+
+
+```{r}
+tidy(lm_fit)
+```
+
+#predicting the training dataset
+```{r}
+result_train <- lm_fit %>% 
+  predict(new_data = juiced) %>% 
+  mutate(truth = data_train$price)
+result_train
+```
+
+#predicting the test dataset
+```{r}
+result_test <- lm_fit %>% 
+  predict(new_data = bake(data_rec, data_test)) %>% 
+  mutate(truth = data_test$price)
+result_test
+```
+
+```{r}
+results <- result_train %>% 
+  mutate(type = "train") %>% 
+  bind_rows(
+    result_test %>% 
+      mutate(type = "test")
+  )
+results
+```
+
+```{r}
+results %>% 
+  group_by(type) %>% 
+  yardstick::rmse(truth, .pred)
+```
+#visualize the data
+```{r}
+ggplot(results, aes(truth, .pred))+
+  geom_point(color = "blue") +
+  geom_abline(color = "red", size = 2)+
+  coord_fixed()
+```
+
